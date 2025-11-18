@@ -124,6 +124,7 @@ namespace CFS.Surge.Core
 
             using Image<Rgba32> decodedImage = new(header.ImageWidth, header.ImageHeight);
             decodedImage.Mutate(ctx => ctx.BackgroundColor(Color.FromPixel(averagePixel)));
+            yield return decodedImage.CloneAs<TPixel>();
 
             int currLayerIdx = -1;
             AggregateBuffer<int>? decodeBuffer = null;
