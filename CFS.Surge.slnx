@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="CFS.Surge.Core/CFS.Surge.Core.csproj" />
+  <Project Path="CFS.Surge.ImageSharp/CFS.Surge.ImageSharp.csproj" />
+</Solution>

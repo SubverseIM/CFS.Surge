@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "CFS.Surge.Core": {
+      "commandName": "Project",
+      "commandLineArgs": ""
+    }
+  }
+}
