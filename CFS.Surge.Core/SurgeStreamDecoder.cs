@@ -40,8 +40,11 @@ namespace CFS.Surge.Core
 
         private void DecodeInner(long currOffset, int currLayerIdx, int x0, int y0, int width, int height, DecoderState state)
         {
+            Span<sbyte> unpackedColorVec = stackalloc sbyte[4];
+
             int layerFactorW = currLayerIdx < 0 ? header.AspectRatio.N : header.ImageLayerFactors[^(currLayerIdx + 1)];
             int layerFactorH = currLayerIdx < 0 ? header.AspectRatio.M : header.ImageLayerFactors[^(currLayerIdx + 1)];
+
             for (int i = 0; i < layerFactorW; i++)
             {
                 state.CancellationToken.ThrowIfCancellationRequested();
@@ -71,7 +74,12 @@ namespace CFS.Surge.Core
                             value = -value;
                         }
 
-                        int unpackedColor = ((value & 0x7F000000) << 1) | (value & 0x00FFFFFF);
+                        int unpackedColor = ((value & 0x7F000000) << 1) | (value & 0x00FFFFFF);                        
+                        for(int ch = 0; ch < 4; ch++)
+                        {
+                            unpackedColorVec[ch] = (sbyte)((unpackedColor >> (ch * 8)) & 0xFF);
+                        }
+
                         for (int y = y0 + height * j / layerFactorH; y < y0 + height * (j + 1) / layerFactorH; y++)
                         {
                             for (int x = x0 + width * i / layerFactorW; x < x0 + width * (i + 1) / layerFactorW; x++)
@@ -80,9 +88,7 @@ namespace CFS.Surge.Core
                                 Span<byte> currPixelVec = MemoryMarshal.AsBytes(new Span<Rgba32>(ref currPixel));
                                 for (int ch = 0; ch < 4; ch++)
                                 {
-                                    currPixelVec[ch] = (byte)Math.Clamp(currPixelVec[ch] + 
-                                        ((sbyte)((unpackedColor >> (ch * 8)) & 0xFF) << 1), 
-                                        0, 255);
+                                    currPixelVec[ch] = (byte)Math.Clamp(currPixelVec[ch] + (unpackedColorVec[ch] << 1), 0, 255);
                                 }
                                 state.DecodedImage[x, y] = currPixel;
                             }
