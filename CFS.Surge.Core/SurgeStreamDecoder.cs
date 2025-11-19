@@ -6,7 +6,6 @@ using SixLabors.ImageSharp.Processing;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 
 namespace CFS.Surge.Core
@@ -76,22 +75,21 @@ namespace CFS.Surge.Core
                             value = -value;
                         }
 
-                        int unpackedColor = ((value & 0x7F000000) << 1) | (value & 0x00FFFFFF);                        
-                        Span<sbyte> unpackedColorSpan = MemoryMarshal.Cast<int, sbyte>(new Span<int>(ref unpackedColor));
-                        Vector64<short> unpackedColorVec = Vector64.WidenLower(Vector64.Create(unpackedColorSpan)) << 1;
+                        int unpackedColor = ((value & 0x7F000000) << 1) | (value & 0x00FFFFFF);
+                        Vector64<short> unpackedColorVec = Vector64.WidenLower(Vector64.Create(unpackedColor).AsSByte()) << 1;
                         for (int y = y0 + height * j / layerFactorH; y < y0 + height * (j + 1) / layerFactorH; y++)
                         {
                             for (int x = x0 + width * i / layerFactorW; x < x0 + width * (i + 1) / layerFactorW; x++)
                             {
                                 Rgba32 currPixel = state.DecodedImage[x, y];
-
-                                Span<byte> currPixelSpan = MemoryMarshal.AsBytes(new Span<Rgba32>(ref currPixel));
-                                Vector64<short> currPixelVec = Vector64.WidenLower(Vector64.Create(currPixelSpan)).AsInt16();
+                                Vector64<short> currPixelVec = Vector64.WidenLower(
+                                    Vector64.Create(currPixel.PackedValue).AsByte()
+                                    ).AsInt16();
 
                                 Vector64<byte> nextPixelVec = Vector64.NarrowWithSaturation(
                                     Vector64.Max(currPixelVec + unpackedColorVec, Vector64<short>.Zero).AsUInt16(), 
                                     Vector64<ushort>.Zero);
-                                nextPixelVec.CopyTo(currPixelSpan);
+                                currPixel.PackedValue = nextPixelVec.AsUInt32().ToScalar();
 
                                 state.DecodedImage[x, y] = currPixel;
                             }
