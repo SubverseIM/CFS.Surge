@@ -6,7 +6,7 @@ using SixLabors.ImageSharp.Processing;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 
 namespace CFS.Surge.Core
 {
@@ -40,22 +40,23 @@ namespace CFS.Surge.Core
 
         private void DecodeInner(long currOffset, int currLayerIdx, int x0, int y0, int width, int height, DecoderState state)
         {
-            Span<sbyte> unpackedColorVec = stackalloc sbyte[4];
-
             int layerFactorW = currLayerIdx < 0 ? header.AspectRatio.N : header.ImageLayerFactors[^(currLayerIdx + 1)];
             int layerFactorH = currLayerIdx < 0 ? header.AspectRatio.M : header.ImageLayerFactors[^(currLayerIdx + 1)];
 
             for (int i = 0; i < layerFactorW; i++)
             {
                 state.CancellationToken.ThrowIfCancellationRequested();
+
                 for (int j = 0; j < layerFactorH; j++)
                 {
                     state.CancellationToken.ThrowIfCancellationRequested();
+
                     int value = state.DecodeBuffer[currOffset++];
                     if (currLayerIdx < state.CurrLayerDepth && (value > 0 || value == int.MinValue))
                     {
                         int offset = value == int.MinValue ? 0 : value >> 2;
-                        DecodeInner(currOffset + offset, currLayerIdx + 1,
+                        DecodeInner(
+                            currOffset + offset, currLayerIdx + 1,
                             x0 + width * i / layerFactorW,
                             y0 + height * j / layerFactorH,
                             width / layerFactorW,
@@ -74,22 +75,22 @@ namespace CFS.Surge.Core
                             value = -value;
                         }
 
-                        int unpackedColor = ((value & 0x7F000000) << 1) | (value & 0x00FFFFFF);                        
-                        for(int ch = 0; ch < 4; ch++)
-                        {
-                            unpackedColorVec[ch] = (sbyte)((unpackedColor >> (ch * 8)) & 0xFF);
-                        }
-
+                        int unpackedColor = ((value & 0x7F000000) << 1) | (value & 0x00FFFFFF);
+                        Vector64<short> unpackedColorVec = Vector64.WidenLower(Vector64.Create(unpackedColor).AsSByte()) << 1;
                         for (int y = y0 + height * j / layerFactorH; y < y0 + height * (j + 1) / layerFactorH; y++)
                         {
                             for (int x = x0 + width * i / layerFactorW; x < x0 + width * (i + 1) / layerFactorW; x++)
                             {
                                 Rgba32 currPixel = state.DecodedImage[x, y];
-                                Span<byte> currPixelVec = MemoryMarshal.AsBytes(new Span<Rgba32>(ref currPixel));
-                                for (int ch = 0; ch < 4; ch++)
-                                {
-                                    currPixelVec[ch] = (byte)Math.Clamp(currPixelVec[ch] + (unpackedColorVec[ch] << 1), 0, 255);
-                                }
+                                Vector64<short> currPixelVec = Vector64.WidenLower(
+                                    Vector64.Create(currPixel.PackedValue).AsByte()
+                                    ).AsInt16();
+
+                                Vector64<byte> nextPixelVec = Vector64.NarrowWithSaturation(
+                                    Vector64.Max(currPixelVec + unpackedColorVec, Vector64<short>.Zero).AsUInt16(), 
+                                    Vector64<ushort>.Zero);
+                                currPixel.PackedValue = nextPixelVec.AsUInt32().ToScalar();
+
                                 state.DecodedImage[x, y] = currPixel;
                             }
                         }
