@@ -98,24 +98,24 @@ namespace CFS.Surge.Core
             }
         }
 
-        private async IAsyncEnumerable<IBuffer<int>> ReadChunksAsync(int maxReadSize, [EnumeratorCancellation] CancellationToken cancellationToken)
+        private async IAsyncEnumerable<IReadOnlyBuffer<int>> ReadPiecesAsync(int maxReadSize, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             int idx = 0;
             bool isCompleted = false;
             while (!isCompleted && idx < header.ImageLayerOffsets.Length)
             {
                 int readCount = 0;
-                byte[] chunkBuffer = new byte[header.ImageLayerOffsets[idx]];
-                while (!isCompleted && readCount < chunkBuffer.Length)
+                byte[] pieceBuffer = new byte[header.ImageLayerOffsets[idx]];
+                while (!isCompleted && readCount < pieceBuffer.Length)
                 {
-                    int toRead = Math.Min(maxReadSize, chunkBuffer.Length - readCount);
-                    int bytesRead = await decodeStream.ReadAsync(chunkBuffer, readCount, toRead, cancellationToken);
+                    int toRead = Math.Min(maxReadSize, pieceBuffer.Length - readCount);
+                    int bytesRead = await decodeStream.ReadAsync(pieceBuffer, readCount, toRead, cancellationToken);
 
                     isCompleted = bytesRead == 0;
                     readCount += bytesRead;
                 }
 
-                yield return new BitBuffer<int>(chunkBuffer);
+                yield return new BitBuffer<int>(pieceBuffer);
                 ++idx;
             }
         }
@@ -133,8 +133,8 @@ namespace CFS.Surge.Core
             yield return decodedImage.CloneAs<TPixel>();
 
             int currLayerIdx = -1;
-            AggregateBuffer<int>? decodeBuffer = null;
-            await foreach (IBuffer<int> pieceBuffer in ReadChunksAsync(
+            ReadOnlyAggregateBuffer<int>? decodeBuffer = null;
+            await foreach (IReadOnlyBuffer<int> pieceBuffer in ReadPiecesAsync(
                 configuration?.StreamProcessingBufferSize 
                 ?? DEFAULT_BLOCK_SIZE, cancellationToken))
             {
